@@ -1,5 +1,182 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Manga Daily</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --card-dark: #1e293b;
+            --accent: #8b5cf6;
+        }
+        body {
+            background-color: var(--bg-dark);
+            color: #f8fafc;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        .manga-card {
+            background-color: var(--card-dark);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .manga-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+        }
+        .loading-shimmer {
+            background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+    </style>
+</head>
+<body class="min-h-screen pb-12">
 
-  Dipayan Dhar
+    <!-- Header -->
+    <header class="border-b border-slate-700 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 class="text-2xl font-bold bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
+                My Manga Daily
+            </h1>
+            <button id="refreshBtn" class="p-2 hover:bg-slate-800 rounded-full transition-colors text-slate-400 hover:text-white">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </header>
 
+    <main class="max-w-6xl mx-auto px-4 mt-8">
+        <!-- Dashboard Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
+                <p class="text-slate-400 text-sm">Last Sync</p>
+                <p id="lastUpdate" class="text-lg font-semibold">Updating...</p>
+            </div>
+            <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
+                <p class="text-slate-400 text-sm">Active Series</p>
+                <p id="seriesCount" class="text-lg font-semibold">0 Items</p>
+            </div>
+            <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
+                <p class="text-slate-400 text-sm">Status</p>
+                <p class="text-lg font-semibold text-green-400">Live Updates Enabled</p>
+            </div>
+        </div>
+
+        <!-- Manga Grid -->
+        <div id="mangaGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <!-- Loading States -->
+            <div class="manga-card rounded-2xl overflow-hidden h-64 loading-shimmer"></div>
+            <div class="manga-card rounded-2xl overflow-hidden h-64 loading-shimmer"></div>
+            <div class="manga-card rounded-2xl overflow-hidden h-64 loading-shimmer"></div>
+            <div class="manga-card rounded-2xl overflow-hidden h-64 loading-shimmer"></div>
+        </div>
+    </main>
+
+    <script>
+        const apiKey = ""; // Environment handles this
+        
+        // List your favorite series here
+        const myMangaList = [
+            "One Piece",
+            "Solo Leveling: Ragnarok",
+            "Jujutsu Kaisen",
+            "Kingdom",
+            "Tower of God",
+            "The Beginning After The End"
+        ];
+
+        async function fetchWithRetry(url, options, retries = 5, backoff = 1000) {
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) throw new Error('API Error');
+                return await response.json();
+            } catch (err) {
+                if (retries <= 0) throw err;
+                await new Promise(resolve => setTimeout(resolve, backoff));
+                return fetchWithRetry(url, options, retries - 1, backoff * 2);
+            }
+        }
+
+        async function getLatestUpdate(mangaName) {
+            const systemPrompt = "You are a manga update assistant. Return a JSON object with 'chapter', 'date', and 'sourceUrl' for the absolute latest chapter of the requested series.";
+            const userQuery = `Find the latest chapter update for "${mangaName}" released in the last 24-48 hours. Provide the chapter number and the link to read it.`;
+
+            try {
+                const data = await fetchWithRetry(
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: userQuery }] }],
+                            systemInstruction: { parts: [{ text: systemPrompt }] },
+                            tools: [{ "google_search": {} }],
+                            generationConfig: { responseMimeType: "application/json" }
+                        })
+                    }
+                );
+
+                const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                return JSON.parse(resultText);
+            } catch (error) {
+                console.error("Failed to fetch update for " + mangaName, error);
+                return { chapter: "N/A", date: "Unknown", sourceUrl: "#" };
+            }
+        }
+
+        async function renderDashboard() {
+            const grid = document.getElementById('mangaGrid');
+            const lastUpdateEl = document.getElementById('lastUpdate');
+            const countEl = document.getElementById('seriesCount');
+            
+            grid.innerHTML = ''; // Clear loading
+            countEl.innerText = `${myMangaList.length} Items`;
+            lastUpdateEl.innerText = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            for (const name of myMangaList) {
+                // Create placeholder card
+                const card = document.createElement('div');
+                card.className = 'manga-card rounded-2xl overflow-hidden border border-slate-700 flex flex-col h-full opacity-50';
+                card.innerHTML = `
+                    <div class="p-4 flex-grow">
+                        <h3 class="font-bold text-lg mb-1 truncate">${name}</h3>
+                        <p class="text-violet-400 text-sm mb-4">Fetching status...</p>
+                        <div class="flex items-center text-xs text-slate-400 space-x-2">
+                            <span class="loading-shimmer w-12 h-3 rounded"></span>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(card);
+
+                // Fetch real data
+                getLatestUpdate(name).then(update => {
+                    card.classList.remove('opacity-50');
+                    card.innerHTML = `
+                        <div class="p-5 flex flex-col h-full">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="font-bold text-lg leading-tight">${name}</h3>
+                                <span class="bg-violet-500/20 text-violet-400 text-[10px] px-2 py-1 rounded uppercase font-bold tracking-wider">Latest</span>
+                            </div>
+                            <p class="text-2xl font-black text-white my-3">Ch. ${update.chapter}</p>
+                            <div class="mt-auto pt-4 flex items-center justify-between border-t border-slate-700/50">
+                                <span class="text-xs text-slate-500">${update.date || 'Today'}</span>
+                                <a href="${update.sourceUrl}" target="_blank" class="text-xs font-semibold text-violet-400 hover:text-violet-300 flex items-center">
+                                    READ NOW <i class="fas fa-external-link-alt ml-2 text-[10px]"></i>
+                                </a>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+        }
+
+        window.onload = renderDashboard;
+        document.getElementById('refreshBtn').onclick = renderDashboard;
+    </script>
+</body>
 </html>
