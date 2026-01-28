@@ -1,2 +1,0 @@
-# dipayan.shop
-website
