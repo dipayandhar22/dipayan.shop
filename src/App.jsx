@@ -1,20 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
-  Home,
-  Search,
-  Library,
-  Play,
-  Folder,
-  Music,
-  Film,
-  ChevronLeft,
-  ChevronRight,
-  X,
-  Volume2,
-  SkipBack,
-  SkipForward,
-  Repeat,
-  Shuffle
+  Home, Search, Library, Play, Pause, Folder, Music, Film, ChevronLeft,
+  ChevronRight, X, Volume2, SkipBack, SkipForward, Repeat, Shuffle,
+  Monitor, Plus, Upload, LogOut, LogIn, PlusCircle, UserPlus, Trash2,
+  Lock, Mail, User, History as HistoryIcon, CheckCircle2, AlertCircle, Info, Settings
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import './App.css'
@@ -22,227 +11,317 @@ import './App.css'
 const API_URL = import.meta.env.PROD ? '' : 'http://localhost:3000';
 
 function App() {
+  const [view, setView] = useState('home');
   const [currentPath, setCurrentPath] = useState('');
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [playing, setPlaying] = useState(null);
+  const [queue, setQueue] = useState([]);
+  const [queueIndex, setQueueIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [user, setUser] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [playlists, setPlaylists] = useState([]);
+
+  // Selection & Forms
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedItems, setSelectedItems] = useState([]);
+  const [playlistForm, setPlaylistForm] = useState({ name: '', isPrivate: false });
+
+  // Auth Form
+  const [showAuthModal, setShowAuthModal] = useState(null);
+  const [authForm, setAuthForm] = useState({ name: '', username: '', password: '' });
+  const [authError, setAuthError] = useState('');
+
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
-    if (searchQuery.trim() === '') {
-      fetchItems(currentPath);
-    } else {
-      const delayDebounceFn = setTimeout(() => {
-        handleSearch(searchQuery);
-      }, 500);
-      return () => clearTimeout(delayDebounceFn);
-    }
-  }, [currentPath, searchQuery]);
+    checkAuth();
+    fetchPlaylists();
+    fetchHistory();
+  }, []);
+
+  useEffect(() => {
+    if (view === 'home' || view === 'library') fetchItems(currentPath);
+  }, [currentPath, view]);
+
+  const checkAuth = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/me`);
+      const data = await res.json();
+      setUser(data.user);
+    } catch (e) { console.error(e); }
+  };
 
   const fetchItems = async (path) => {
     setLoading(true);
     try {
-      const url = `${API_URL}/api/files?path=${encodeURIComponent(path)}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        setItems(data);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+      const res = await fetch(`${API_URL}/api/files?path=${encodeURIComponent(path)}`);
+      if (res.ok) setItems(await res.json());
+    } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
-  const handleSearch = async (query) => {
-    setLoading(true);
+  const fetchPlaylists = async () => {
     try {
-      const url = `${API_URL}/api/search?q=${encodeURIComponent(query)}`;
-      const res = await fetch(url);
+      const res = await fetch(`${API_URL}/api/playlists`);
+      if (res.ok) setPlaylists(await res.json());
+    } catch (e) { console.error(e); }
+  };
+
+  const fetchHistory = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/history`);
+      if (res.ok) setHistory(await res.json());
+    } catch (e) { console.error(e); }
+  };
+
+  const handleNavigate = (path) => {
+    setCurrentPath(path);
+    setView('library');
+  };
+
+  const handleCreatePlaylist = async (e) => {
+    e.preventDefault();
+    if (!playlistForm.name) return;
+    try {
+      const res = await fetch(`${API_URL}/api/playlists`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: playlistForm.name, tracks: selectedItems, isPrivate: playlistForm.isPrivate })
+      });
       if (res.ok) {
-        const data = await res.json();
-        setItems(data);
+        alert("Playlist Created Successfully!");
+        setPlaylistForm({ name: '', isPrivate: false });
+        setSelectedItems([]);
+        setSelectionMode(false);
+        fetchPlaylists();
+        setView('playlists');
       }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+    } catch (e) { alert("Error creating playlist"); }
+  };
+
+  const playMedia = (item, currentQueue = []) => {
+    setPlaying(item);
+    setQueue(currentQueue);
+    const idx = currentQueue.findIndex(i => i.path === item.path);
+    setQueueIndex(idx !== -1 ? idx : 0);
+  };
+
+  const onNext = () => {
+    if (queueIndex < queue.length - 1) {
+      const nextIdx = queueIndex + 1;
+      setQueueIndex(nextIdx);
+      setPlaying(queue[nextIdx]);
     }
   };
 
-  const handleNavigate = (folderName) => {
-    const newPath = currentPath ? `${currentPath}/${folderName}` : folderName;
-    setCurrentPath(newPath);
-    setSearchQuery('');
-  };
-
-  const goHome = () => {
-    setCurrentPath('');
-    setSearchQuery('');
-  };
-
-  const getMediaIcon = (type, name) => {
-    if (type === 'directory') return <Folder size={64} className="text-sub" />;
-    if (name.match(/\.(mp3|wav|flac|m4a)$/i)) return <Music size={64} style={{ color: '#1db954' }} />;
-    if (name.match(/\.(mp4|mkv|webm|avi|mov)$/i)) return <Film size={64} style={{ color: '#a78bfa' }} />;
-    return <Folder size={64} />;
-  };
-
-  const handleItemClick = (item) => {
-    if (item.type === 'directory') {
-      handleNavigate(item.name);
-    } else if (item.name.match(/\.(mp3|wav|flac|m4a|mp4|webm|ogg|mov)$/i)) {
-      setPlaying(item);
+  const onPrev = () => {
+    if (queueIndex > 0) {
+      const prevIdx = queueIndex - 1;
+      setQueueIndex(prevIdx);
+      setPlaying(queue[prevIdx]);
     }
   };
-
-  const pathParts = currentPath ? currentPath.split('/') : [];
 
   return (
     <div className="main-layout">
-      {/* Sidebar */}
+      {/* Sidebar - Clean White */}
       <aside className="sidebar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', marginBottom: '16px' }}>
+          <div className="avatar" style={{ background: 'var(--accent-gradient)', color: 'white' }}>Z</div>
+          <span style={{ fontWeight: 900, fontSize: '22px', letterSpacing: '-1px' }}>ZYNGLISS</span>
+        </div>
+
         <div className="sidebar-nav">
-          <div className={`nav-item ${!currentPath && !searchQuery ? 'active' : ''}`} onClick={goHome}>
-            <Home size={24} />
-            <span>Home</span>
+          <div className={`nav-item ${view === 'home' ? 'active' : ''}`} onClick={() => setView('home')}>
+            <Home size={20} /> <span>Home</span>
           </div>
-          <div className="nav-item">
-            <Search size={24} />
-            <span>Search</span>
+          <div className={`nav-item ${view === 'library' ? 'active' : ''}`} onClick={() => { setView('library'); setCurrentPath(''); }}>
+            <Library size={20} /> <span>My Library</span>
+          </div>
+          <div className={`nav-item ${view === 'playlists' ? 'active' : ''}`} onClick={() => setView('playlists')}>
+            <Play size={20} /> <span>Playlists</span>
+          </div>
+          <div className={`nav-item ${view === 'create-playlist' ? 'active' : ''}`} onClick={() => setView('create-playlist')}>
+            <PlusCircle size={20} /> <span>Create Playlist</span>
+          </div>
+          <div className={`nav-item ${view === 'history' ? 'active' : ''}`} onClick={() => setView('history')}>
+            <HistoryIcon size={20} /> <span>Recents</span>
           </div>
         </div>
 
         <div className="sidebar-library">
-          <div className="nav-item">
-            <Library size={24} />
-            <span>Your Library</span>
-          </div>
-          <div style={{ padding: '0 12px', fontSize: '13px', color: '#b3b3b3', marginTop: '12px' }}>
-            {pathParts.length > 0 ? (
-              <div
-                onClick={() => {
-                  const parts = [...pathParts];
-                  parts.pop();
-                  setCurrentPath(parts.join('/'));
-                }}
-                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-              >
-                <ChevronLeft size={16} /> Back to parent
+          <div className="nav-item" style={{ fontSize: '12px', opacity: 0.5, fontWeight: 800, textTransform: 'uppercase' }}>Playlists</div>
+          <div className="library-scroll">
+            {playlists.map(p => (
+              <div key={p.id} className="nav-item" style={{ padding: '8px 16px' }} onClick={() => { setQueue(p.tracks); setPlaying(p.tracks[0]); }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Music size={14} /></div>
+                <span style={{ fontSize: '13px' }}>{p.name}</span>
               </div>
-            ) : 'All Collections'}
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="content-area">
-        <header className="top-bar">
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button className="nav-btn" onClick={() => window.history.back()}><ChevronLeft /></button>
-            <button className="nav-btn" onClick={() => window.history.forward()}><ChevronRight /></button>
-          </div>
-
-          <div className="search-bar">
-            <Search size={20} className="text-sub" />
-            <input
-              type="text"
-              placeholder="What do you want to play?"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && <X size={18} style={{ cursor: 'pointer' }} onClick={() => setSearchQuery('')} />}
-          </div>
-
-          <div style={{ width: '40px' }}></div> {/* Spacer */}
-        </header>
-
-        <div className="main-view">
-          <h1 className="section-title">
-            {searchQuery ? `Search results for "${searchQuery}"` : (pathParts[pathParts.length - 1] || 'Good evening')}
-          </h1>
-
-          <div className="media-grid">
-            {items.map((item, idx) => (
-              <motion.div
-                key={item.path + idx}
-                className="item-card"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.02 }}
-                onClick={() => handleItemClick(item)}
-              >
-                <div className="card-image">
-                  {getMediaIcon(item.type, item.name)}
-                  <div className="play-button-floating">
-                    <Play size={24} fill="black" color="black" />
-                  </div>
-                </div>
-                <div className="card-title">{item.name}</div>
-                <div className="card-sub">{item.type === 'directory' ? 'Folder' : 'Media File'}</div>
-              </motion.div>
             ))}
           </div>
         </div>
-      </main>
 
-      {/* Player Overlay */}
-      <AnimatePresence>
-        {playing && (
-          <motion.div
-            className="player-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={(e) => e.target === e.currentTarget && setPlaying(null)}
-          >
-            <div className="player-content">
-              <div className="player-header">
-                <div>
-                  <div style={{ fontWeight: 700 }}>{playing.name}</div>
-                  <div style={{ fontSize: '12px', color: '#b3b3b3' }}>Now Playing</div>
+        <div className="user-section">
+          {user ? (
+            <div className="nav-item" onClick={() => { fetch(`${API_URL}/api/logout`, { method: 'POST' }).then(() => setUser(null)); }}>
+              <LogOut size={20} /> <span>Logout ({user.name})</span>
+            </div>
+          ) : (
+            <div className="nav-item" onClick={() => setShowAuthModal('login')}>
+              <LogIn size={20} /> <span>Sign In</span>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      <main className="content-area">
+        <header className="top-bar">
+          <div className="search-bar">
+            <Search size={18} color="#94a3b8" />
+            <input placeholder="Search tracks, artists, albums..." value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setView(e.target.value ? 'search' : 'home'); }} />
+          </div>
+
+          <div style={{ display: 'flex', gap: '16px' }}>
+            {user && <button className="action-btn-primary" onClick={() => setShowUploadModal(true)} style={{ background: 'black' }}><Upload size={18} /> <span>Upload</span></button>}
+          </div>
+        </header>
+
+        <div className="main-view">
+          {view === 'create-playlist' ? (
+            <div className="create-playlist-container">
+              <h1 className="section-title"><PlusCircle size={32} /> Create New Playlist</h1>
+              <form onSubmit={handleCreatePlaylist}>
+                <div className="form-group">
+                  <label>Playlist Name</label>
+                  <input required placeholder="e.g. Summer Hits 2026" value={playlistForm.name} onChange={e => setPlaylistForm({ ...playlistForm, name: e.target.value })} />
                 </div>
-                <button
-                  onClick={() => setPlaying(null)}
-                  style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}
-                >
-                  <X size={24} />
-                </button>
+                <div className="form-group">
+                  <label>Privacy</label>
+                  <select style={{ width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid var(--border)' }} onChange={e => setPlaylistForm({ ...playlistForm, isPrivate: e.target.value === 'true' })}>
+                    <option value="false">Public (Everyone can see)</option>
+                    <option value="true">Private (Only me)</option>
+                  </select>
+                </div>
+                <div style={{ marginTop: '20px', padding: '16px', border: '1px dashed var(--border)', borderRadius: '12px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '14px', color: 'var(--text-sub)' }}>
+                    {selectedItems.length > 0 ? `${selectedItems.length} tracks selected for this playlist` : 'Use "Bulk Select" in Library to add tracks'}
+                  </span>
+                </div>
+                <button type="submit" className="login-btn-sidebar" style={{ marginTop: '32px' }}>Save Playlist</button>
+              </form>
+            </div>
+          ) : (
+            <>
+              <div className="section-header">
+                <h1 className="section-title">
+                  {view === 'home' && 'Good Evening'}
+                  {view === 'library' && (currentPath ? currentPath.split('/').pop() : 'My Library')}
+                  {view === 'playlists' && 'Playlists'}
+                  {view === 'history' && 'Recently Played'}
+                  {view === 'search' && `Results for "${searchQuery}"`}
+                </h1>
+                {view === 'library' && user && (
+                  <button className={`ghost-btn ${selectionMode ? 'active' : ''}`} onClick={() => { setSelectionMode(!selectionMode); setSelectedItems([]); }} style={{ borderRadius: '50px', padding: '8px 24px' }}>
+                    {selectionMode ? 'Cancel' : 'Bulk Select'}
+                  </button>
+                )}
               </div>
 
-              <div className="media-wrapper">
+              <div className="media-grid">
+                {view === 'library' && items.map((item, idx) => (
+                  <motion.div key={item.path + idx} className={`item-card ${selectedItems.find(i => i.path === item.path) ? 'selected' : ''}`} onClick={() => {
+                    if (selectionMode && item.type === 'file') {
+                      const exists = selectedItems.find(i => i.path === item.path);
+                      setSelectedItems(exists ? selectedItems.filter(i => i.path !== item.path) : [...selectedItems, item]);
+                    } else {
+                      if (item.type === 'directory') setCurrentPath(item.path);
+                      else playMedia(item, items.filter(i => i.type === 'file'));
+                    }
+                  }}>
+                    <div className="card-image">
+                      {item.type === 'directory' ? <Folder size={64} color="#3b82f6" /> : <Music size={64} color="#94a3b8" />}
+                      {selectionMode && item.type === 'file' && <div className="selection-overlay" style={{ background: selectedItems.find(i => i.path === item.path) ? 'var(--accent)' : 'transparent' }}>{selectedItems.find(i => i.path === item.path) && <CheckCircle2 size={16} color="white" />}</div>}
+                    </div>
+                    <div className="card-title" style={{ fontSize: '15px' }}>{item.name}</div>
+                    <div className="card-sub">{item.type === 'directory' ? 'Folder' : 'Audio Track'}</div>
+                  </motion.div>
+                ))}
+
+                {view === 'playlists' && playlists.map(p => (
+                  <div key={p.id} className="item-card" onClick={() => playMedia(p.tracks[0], p.tracks)}>
+                    <div className="card-image" style={{ background: 'var(--accent-gradient)' }}><Play size={48} color="white" fill="white" /></div>
+                    <div className="card-title">{p.name}</div>
+                    <div className="card-sub">{p.tracks.length} tracks • By {p.ownerName}</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          <footer className="legal-footer">
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '32px', marginBottom: '16px', fontWeight: 700 }}>
+              <a href="#">Copyright &copy; 2026</a>
+              <a href="#">Privacy</a>
+              <a href="#">Terms</a>
+              <a href="#">GDPR</a>
+            </div>
+            <p>Designed for professional media delivery from local infrastructure.</p>
+          </footer>
+        </div>
+      </main>
+
+      {/* Auth Modal */}
+      {showAuthModal && (
+        <div className="modal-overlay" style={{ background: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(10px)' }} onClick={() => setShowAuthModal(null)}>
+          <div className="modal-content" style={{ maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ marginBottom: '32px', textAlign: 'center', fontWeight: 900 }}>WELCOME</h2>
+            <div className="auth-form" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <input placeholder="Email" style={{ padding: '16px', borderRadius: '12px', border: '1px solid var(--border)' }} onChange={e => setAuthForm({ ...authForm, username: e.target.value })} />
+              <input placeholder="Password" type="password" style={{ padding: '16px', borderRadius: '12px', border: '1px solid var(--border)' }} onChange={e => setAuthForm({ ...authForm, password: e.target.value })} />
+              <button className="login-btn-sidebar" onClick={async () => {
+                const res = await fetch(`${API_URL}/api/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(authForm) });
+                if (res.ok) { const data = await res.json(); setUser(data.user); setShowAuthModal(null); } else { alert("Login Failed"); }
+              }}>SIGN IN</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Global Player */}
+      <AnimatePresence>
+        {playing && (
+          <motion.div className="player-overlay" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25 }}>
+            <div className="player-content">
+              <div className="player-header">
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 900, fontSize: '24px' }}>{playing.name}</div>
+                  <div style={{ color: 'var(--accent)', fontWeight: 700 }}>NOW STREAMING</div>
+                </div>
+                <button onClick={() => setPlaying(null)} style={{ background: '#f1f5f9', border: 'none', padding: '12px', borderRadius: '50%' }}><X size={24} /></button>
+              </div>
+
+              <div className="media-container">
                 {playing.name.match(/\.(mp4|mkv|webm|avi|mov)$/i) ? (
                   <video controls autoPlay src={`${API_URL}/media/${encodeURIComponent(playing.path)}`} />
                 ) : (
-                  <div className="audio-ui">
-                    <Music size={120} style={{ color: '#1db954' }} />
-                    <audio controls autoPlay src={`${API_URL}/media/${encodeURIComponent(playing.path)}`} />
-
-                    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
-                      <div style={{ display: 'flex', gap: '32px', alignItems: 'center' }}>
-                        <Shuffle size={20} color="#b3b3b3" />
-                        <SkipBack size={32} fill="white" />
-                        <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'white', display: 'flex', alignItems: 'center', justifyCenter: 'center', paddingLeft: '4px' }}>
-                          <Play size={24} fill="black" color="black" />
-                        </div>
-                        <SkipForward size={32} fill="white" />
-                        <Repeat size={20} color="#b3b3b3" />
-                      </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ width: '280px', height: '280px', borderRadius: '40px', background: '#f1f5f9', margin: '0 auto 40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Music size={120} color="#cbd5e1" />
                     </div>
+                    <audio controls autoPlay src={`${API_URL}/media/${encodeURIComponent(playing.path)}`} onEnded={onNext} style={{ width: '400px' }} />
                   </div>
                 )}
               </div>
 
-              {/* Fake playback control bar for aesthetic */}
-              {!playing.name.match(/\.(mp4|mkv|webm|avi|mov)$/i) && (
-                <div style={{ padding: '20px 40px', background: '#121212', display: 'flex', alignItems: 'center', gap: '20px' }}>
-                  <Volume2 size={20} color="#b3b3b3" />
-                  <div style={{ flex: 1, height: '4px', background: '#4d4d4d', borderRadius: '2px' }}>
-                    <div style={{ width: '70%', height: '100%', background: '#1db954', borderRadius: '2px' }}></div>
-                  </div>
+              <div className="player-controls">
+                <div style={{ display: 'flex', gap: '48px', alignItems: 'center' }}>
+                  <SkipBack size={32} onClick={onPrev} style={{ cursor: 'pointer' }} />
+                  <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'black', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => { }}><Pause size={32} fill="currentColor" /></div>
+                  <SkipForward size={32} onClick={onNext} style={{ cursor: 'pointer' }} />
                 </div>
-              )}
+              </div>
             </div>
           </motion.div>
         )}

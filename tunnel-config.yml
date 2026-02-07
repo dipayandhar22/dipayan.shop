@@ -1,0 +1,9 @@
+tunnel: 6f4de041-a897-4626-8be1-6b7b4e05ee55
+credentials-file: C:\Users\dipay\.cloudflared\6f4de041-a897-4626-8be1-6b7b4e05ee55.json
+
+ingress:
+  - hostname: www.dipayan.shop
+    service: http://localhost:3000
+  - hostname: dipayan.shop
+    service: http://localhost:3000
+  - service: http_status:404
