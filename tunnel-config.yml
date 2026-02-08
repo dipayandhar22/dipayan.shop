@@ -6,4 +6,6 @@ ingress:
     service: http://localhost:3000
   - hostname: dipayan.shop
     service: http://localhost:3000
+  - hostname: media.dipayan.shop
+    service: http://localhost:3000
   - service: http_status:404
